@@ -1,32 +1,95 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class PracticeScreen extends StatefulWidget {
+import '../providers/audio_providers.dart';
+
+class PracticeScreen extends ConsumerStatefulWidget {
   const PracticeScreen({super.key});
 
   @override
-  State<PracticeScreen> createState() => _PracticeScreenState();
+  ConsumerState<PracticeScreen> createState() => _PracticeScreenState();
 }
 
-class _PracticeScreenState extends State<PracticeScreen> {
-  bool _isRecording = false;
+class _PracticeScreenState extends ConsumerState<PracticeScreen> {
   bool _isScoreLoaded = false;
+  bool _isInitialized = false;
 
-  void _toggleRecording() {
-    setState(() {
-      _isRecording = !_isRecording;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _initializeServices();
+  }
 
-    if (_isRecording) {
-      // TODO: Start audio recording and Gemini API streaming
+  Future<void> _initializeServices() async {
+    try {
+      final audioService = ref.read(audioInputServiceProvider);
+      final geminiService = ref.read(geminiAudioServiceProvider);
+
+      // Request microphone permission
+      final hasPermission = await audioService.requestPermissions();
+
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Microphone permission is required'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Initialize audio service
+      await audioService.initialize();
+
+      // Connect to Gemini API (mock mode for development)
+      await geminiService.connectLiveAPI();
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio system initialized')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Initialization failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (!_isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recording started...')),
+        const SnackBar(content: Text('Please wait for initialization...')),
       );
-    } else {
-      // TODO: Stop audio recording
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recording stopped')),
-      );
+      return;
+    }
+
+    final audioService = ref.read(audioInputServiceProvider);
+    final isRecording = ref.read(isRecordingProvider);
+
+    try {
+      if (isRecording) {
+        await audioService.stopRecording();
+        ref.read(isRecordingProvider.notifier).state = false;
+      } else {
+        await audioService.startRecording();
+        ref.read(isRecordingProvider.notifier).state = true;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recording error: $e')),
+        );
+      }
     }
   }
 
@@ -42,6 +105,10 @@ class _PracticeScreenState extends State<PracticeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isRecording = ref.watch(isRecordingProvider);
+    final latestNote = ref.watch(latestNoteProvider);
+    final detectedNotes = ref.watch(audioStreamNotifierProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Practice Session'),
@@ -62,13 +129,23 @@ class _PracticeScreenState extends State<PracticeScreen> {
           Expanded(
             child: Container(
               color: Colors.white,
-              child: Center(
-                child: _isScoreLoaded
-                    ? const Text(
-                        'Score will be rendered here using WebView + OSMD',
-                        style: TextStyle(color: Colors.grey),
-                      )
-                    : Column(
+              child: _isScoreLoaded
+                  ? Column(
+                      children: [
+                        const Expanded(
+                          child: Center(
+                            child: Text(
+                              'Score will be rendered here using WebView + OSMD',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                        // Debug: Show detected notes
+                        if (isRecording) _buildDebugNotesPanel(latestNote, detectedNotes),
+                      ],
+                    )
+                  : Center(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -92,7 +169,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
                           ),
                         ],
                       ),
-              ),
+                    ),
             ),
           ),
 
@@ -113,7 +190,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
               child: Column(
                 children: [
                   // Recording Status
-                  if (_isRecording)
+                  if (isRecording)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
                       child: Row(
@@ -139,6 +216,24 @@ class _PracticeScreenState extends State<PracticeScreen> {
                       ),
                     ),
 
+                  // Initialization Status
+                  if (!_isInitialized)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Text('Initializing audio system...'),
+                        ],
+                      ),
+                    ),
+
                   // Main Controls
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -147,9 +242,9 @@ class _PracticeScreenState extends State<PracticeScreen> {
                       FloatingActionButton.large(
                         onPressed: _toggleRecording,
                         backgroundColor:
-                            _isRecording ? Colors.red : Colors.blue,
+                            isRecording ? Colors.red : Colors.blue,
                         child: Icon(
-                          _isRecording ? Icons.stop : Icons.mic,
+                          isRecording ? Icons.stop : Icons.mic,
                           size: 32,
                         ),
                       ),
@@ -188,6 +283,51 @@ class _PracticeScreenState extends State<PracticeScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebugNotesPanel(AsyncValue latestNote, List detectedNotes) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      color: Colors.black.withValues(alpha: 0.7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Debug: Detected Notes (Mock Mode)',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          latestNote.when(
+            data: (note) => Text(
+              'Latest: ${note.pitch} (${note.confidence.toStringAsFixed(2)})',
+              style: const TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            loading: () => const Text(
+              'Listening...',
+              style: TextStyle(color: Colors.white70),
+            ),
+            error: (err, stack) => Text(
+              'Error: $err',
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Total notes detected: ${detectedNotes.length}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       ),
