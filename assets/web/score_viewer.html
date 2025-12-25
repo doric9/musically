@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Score Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.6/build/opensheetmusicdisplay.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+
+        #score-container {
+            width: 100%;
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 16px;
+            scroll-behavior: smooth;
+        }
+
+        .measure-highlight {
+            background-color: rgba(76, 175, 80, 0.15);
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .note-highlight {
+            fill: #4CAF50 !important;
+            opacity: 0.8;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-size: 18px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="score-container">
+        <div class="loading">Loading score...</div>
+    </div>
+
+    <script>
+        let osmd = null;
+        let currentMeasureIndex = 0;
+        let currentNoteIndex = 0;
+        let zoomLevel = 1.0;
+
+        // Initialize OSMD
+        async function initializeOSMD(musicXmlContent) {
+            try {
+                const container = document.getElementById('score-container');
+                container.innerHTML = ''; // Clear loading message
+
+                osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, {
+                    autoResize: true,
+                    backend: 'svg',
+                    drawTitle: true,
+                    drawComposer: true,
+                    drawPartNames: true,
+                    drawMeasureNumbers: true,
+                    measureNumberInterval: 1,
+                    coloringEnabled: true,
+                });
+
+                await osmd.load(musicXmlContent);
+                osmd.zoom = zoomLevel;
+                osmd.render();
+
+                sendMessage('osmd_initialized', { success: true });
+            } catch (error) {
+                console.error('Failed to initialize OSMD:', error);
+                sendMessage('osmd_error', { error: error.message });
+            }
+        }
+
+        // Load MusicXML from string
+        function loadScore(musicXmlContent) {
+            initializeOSMD(musicXmlContent);
+        }
+
+        // Highlight specific measure
+        function highlightMeasure(measureIndex) {
+            if (!osmd) return;
+
+            // Remove previous highlights
+            clearHighlights();
+
+            currentMeasureIndex = measureIndex;
+
+            // Get all measure elements
+            const measures = document.querySelectorAll('g[class*="measure"]');
+            if (measures[measureIndex]) {
+                measures[measureIndex].classList.add('measure-highlight');
+            }
+
+            sendMessage('measure_highlighted', { measureIndex });
+        }
+
+        // Highlight specific note in current measure
+        function highlightNote(measureIndex, noteIndex) {
+            if (!osmd) return;
+
+            highlightMeasure(measureIndex);
+            currentNoteIndex = noteIndex;
+
+            // TODO: Implement precise note highlighting
+            // This requires deeper OSMD DOM traversal
+
+            sendMessage('note_highlighted', { measureIndex, noteIndex });
+        }
+
+        // Clear all highlights
+        function clearHighlights() {
+            document.querySelectorAll('.measure-highlight').forEach(el => {
+                el.classList.remove('measure-highlight');
+            });
+            document.querySelectorAll('.note-highlight').forEach(el => {
+                el.classList.remove('note-highlight');
+            });
+        }
+
+        // Set zoom level
+        function setZoom(zoom) {
+            if (!osmd) return;
+
+            zoomLevel = zoom;
+            osmd.zoom = zoom;
+            osmd.render();
+
+            sendMessage('zoom_changed', { zoom });
+        }
+
+        // Auto-scroll to measure
+        function scrollToMeasure(measureIndex, smooth = true) {
+            const measures = document.querySelectorAll('g[class*="measure"]');
+            if (!measures[measureIndex]) return;
+
+            const measureElement = measures[measureIndex];
+            const rect = measureElement.getBoundingClientRect();
+            const container = document.getElementById('score-container');
+
+            const targetScrollTop = container.scrollTop + rect.top - window.innerHeight / 3;
+
+            if (smooth) {
+                container.scrollTo({
+                    top: targetScrollTop,
+                    behavior: 'smooth'
+                });
+            } else {
+                container.scrollTop = targetScrollTop;
+            }
+
+            sendMessage('scrolled_to_measure', { measureIndex });
+        }
+
+        // Get score metadata
+        function getScoreMetadata() {
+            if (!osmd || !osmd.sheet) {
+                return null;
+            }
+
+            const metadata = {
+                title: osmd.sheet.Title || 'Untitled',
+                composer: osmd.sheet.Composer || 'Unknown',
+                measureCount: osmd.sheet.SourceMeasures.length,
+                duration: osmd.sheet.SheetPlaybackManager?.Duration || 0,
+            };
+
+            sendMessage('score_metadata', metadata);
+            return metadata;
+        }
+
+        // Send messages to Flutter
+        function sendMessage(type, data) {
+            if (window.flutter_inappwebview) {
+                window.flutter_inappwebview.callHandler('scoreViewerMessage', {
+                    type: type,
+                    data: data,
+                    timestamp: Date.now()
+                });
+            }
+        }
+
+        // Expose functions to Flutter
+        window.scoreViewer = {
+            loadScore,
+            highlightMeasure,
+            highlightNote,
+            clearHighlights,
+            setZoom,
+            scrollToMeasure,
+            getScoreMetadata
+        };
+
+        // Notify Flutter that page is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            sendMessage('page_ready', {});
+        });
+    </script>
+</body>
+</html>

@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../providers/audio_providers.dart';
+import '../models/score.dart';
+import '../models/note_data.dart';
+import '../widgets/score_viewer.dart';
+import '../services/score_sync_service.dart';
+import '../controllers/zoom_controller.dart';
+import '../controllers/auto_scroll_controller.dart';
 
 class PracticeScreen extends ConsumerStatefulWidget {
   const PracticeScreen({super.key});
@@ -11,14 +18,35 @@ class PracticeScreen extends ConsumerStatefulWidget {
   ConsumerState<PracticeScreen> createState() => _PracticeScreenState();
 }
 
-class _PracticeScreenState extends ConsumerState<PracticeScreen> {
+class _PracticeScreenState extends ConsumerState<PracticeScreen>
+    with TickerProviderStateMixin {
+  Score? _score;
   bool _isScoreLoaded = false;
   bool _isInitialized = false;
+
+  // Controllers
+  late ZoomController _zoomController;
+  AutoScrollController? _scrollController;
+  ScoreSyncService? _syncService;
+
+  // UI state
+  bool _autoScrollEnabled = true;
+  ScorePosition _currentPosition = ScorePosition.initial();
+  final GlobalKey<State<ScoreViewer>> _scoreViewerKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    _zoomController = ZoomController(initialZoom: 1.0);
     _initializeServices();
+    _loadScore();
+  }
+
+  @override
+  void dispose() {
+    _zoomController.dispose();
+    _scrollController?.dispose();
+    super.dispose();
   }
 
   Future<void> _initializeServices() async {
@@ -93,14 +121,123 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
     }
   }
 
-  void _loadScore() {
+  Future<void> _loadScore() async {
+    try {
+      // Load sample MusicXML file from assets
+      final musicXmlContent = await rootBundle.loadString(
+        'assets/scores/sample.musicxml',
+      );
+
+      // Create sample score with metadata
+      // Note: In production, this would parse the MusicXML to extract measures and notes
+      final score = Score(
+        id: 'sample-001',
+        title: 'Twinkle Twinkle Little Star',
+        composer: 'Traditional',
+        musicXmlContent: musicXmlContent,
+        measures: _createSampleMeasures(), // Mock measures for synchronization
+        totalDuration: 32000, // 32 seconds
+        difficulty: 'Beginner',
+      );
+
+      setState(() {
+        _score = score;
+        _isScoreLoaded = true;
+
+        // Initialize synchronization service
+        _syncService = ScoreSyncService(score: score);
+
+        // Initialize scroll controller
+        _scrollController = AutoScrollController(
+          score: score,
+          scoreViewerKey: _scoreViewerKey,
+        );
+        _scrollController!.setEnabled(_autoScrollEnabled);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Score loaded successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load score: $e')),
+        );
+      }
+    }
+  }
+
+  /// Create sample measures for synchronization
+  /// In production, this would be parsed from MusicXML
+  List<Measure> _createSampleMeasures() {
+    return [
+      Measure(
+        index: 0,
+        startTime: 0,
+        duration: 8000,
+        timeSignature: '4/4',
+        keySignature: 'C major',
+        tempo: 120,
+        notes: [
+          ScoreNote(pitch: 'C4', midiNumber: 60, startTime: 0, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'C4', midiNumber: 60, startTime: 1000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'G4', midiNumber: 67, startTime: 2000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'G4', midiNumber: 67, startTime: 3000, duration: 1000, noteType: 'quarter'),
+        ],
+      ),
+      Measure(
+        index: 1,
+        startTime: 8000,
+        duration: 8000,
+        timeSignature: '4/4',
+        notes: [
+          ScoreNote(pitch: 'A4', midiNumber: 69, startTime: 0, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'A4', midiNumber: 69, startTime: 1000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'G4', midiNumber: 67, startTime: 2000, duration: 2000, noteType: 'half'),
+        ],
+      ),
+      Measure(
+        index: 2,
+        startTime: 16000,
+        duration: 8000,
+        timeSignature: '4/4',
+        notes: [
+          ScoreNote(pitch: 'F4', midiNumber: 65, startTime: 0, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'F4', midiNumber: 65, startTime: 1000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'E4', midiNumber: 64, startTime: 2000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'E4', midiNumber: 64, startTime: 3000, duration: 1000, noteType: 'quarter'),
+        ],
+      ),
+      Measure(
+        index: 3,
+        startTime: 24000,
+        duration: 8000,
+        timeSignature: '4/4',
+        notes: [
+          ScoreNote(pitch: 'D4', midiNumber: 62, startTime: 0, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'D4', midiNumber: 62, startTime: 1000, duration: 1000, noteType: 'quarter'),
+          ScoreNote(pitch: 'C4', midiNumber: 60, startTime: 2000, duration: 2000, noteType: 'half'),
+        ],
+      ),
+    ];
+  }
+
+  /// Handle detected note and update synchronization
+  void _onNoteDetected(NoteData note) {
+    if (_syncService == null || !_isScoreLoaded) return;
+
+    final newPosition = _syncService!.processDetectedNote(note);
+
     setState(() {
-      _isScoreLoaded = true;
+      _currentPosition = newPosition;
     });
-    // TODO: Load MusicXML file and render in WebView
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Score loaded successfully')),
-    );
+
+    // Update scroll position
+    if (_autoScrollEnabled) {
+      _scrollController?.updatePosition(newPosition);
+    }
   }
 
   @override
@@ -109,14 +246,33 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
     final latestNote = ref.watch(latestNoteProvider);
     final detectedNotes = ref.watch(audioStreamNotifierProvider);
 
+    // Listen to note stream and trigger synchronization
+    ref.listen<AsyncValue>(latestNoteProvider, (previous, next) {
+      next.whenData((note) {
+        if (note != null) {
+          _onNoteDetected(note);
+        }
+      });
+    });
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Practice Session'),
+        title: Text(_score?.title ?? 'Practice Session'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/'),
         ),
         actions: [
+          if (_isScoreLoaded)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: Text(
+                  'Measure ${_currentPosition.measureIndex + 1}/${_score?.measureCount ?? 0}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => context.go('/settings'),
@@ -129,19 +285,123 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
           Expanded(
             child: Container(
               color: Colors.white,
-              child: _isScoreLoaded
-                  ? Column(
+              child: _isScoreLoaded && _score != null
+                  ? Stack(
                       children: [
-                        const Expanded(
-                          child: Center(
-                            child: Text(
-                              'Score will be rendered here using WebView + OSMD',
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                        // Score Viewer with OSMD
+                        AnimatedBuilder(
+                          animation: _zoomController,
+                          builder: (context, child) {
+                            return ScoreViewer(
+                              key: _scoreViewerKey,
+                              score: _score!,
+                              currentPosition: _currentPosition,
+                              zoom: _zoomController.zoom,
+                              onError: (error) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Score error: $error')),
+                                );
+                              },
+                            );
+                          },
+                        ),
+
+                        // Zoom controls overlay
+                        Positioned(
+                          top: 16,
+                          right: 16,
+                          child: AnimatedBuilder(
+                            animation: _zoomController,
+                            builder: (context, child) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove,
+                                          color: Colors.white, size: 18),
+                                      onPressed: _zoomController.zoomOut,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                    Text(
+                                      _zoomController.getZoomPercentage(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.add,
+                                          color: Colors.white, size: 18),
+                                      onPressed: _zoomController.zoomIn,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
                         ),
+
+                        // Synchronization confidence indicator
+                        if (_syncService != null && isRecording)
+                          Positioned(
+                            top: 16,
+                            left: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.track_changes,
+                                    color: _getSyncColor(_syncService!.getSynchronizationConfidence()),
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Sync: ${(_syncService!.getSynchronizationConfidence() * 100).toInt()}%',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
                         // Debug: Show detected notes
-                        if (isRecording) _buildDebugNotesPanel(latestNote, detectedNotes),
+                        if (isRecording)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: _buildDebugNotesPanel(latestNote, detectedNotes),
+                          ),
                       ],
                     )
                   : Center(
@@ -155,18 +415,14 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                           ),
                           const SizedBox(height: 16),
                           const Text(
-                            'No score loaded',
+                            'Loading score...',
                             style: TextStyle(
                               fontSize: 18,
                               color: Colors.grey,
                             ),
                           ),
                           const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: _loadScore,
-                            icon: const Icon(Icons.upload_file),
-                            label: const Text('Load Score'),
-                          ),
+                          const CircularProgressIndicator(),
                         ],
                       ),
                     ),
@@ -238,6 +494,21 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
+                      // Reset Button
+                      IconButton.outlined(
+                        icon: const Icon(Icons.replay),
+                        onPressed: _isScoreLoaded
+                            ? () {
+                                _syncService?.reset();
+                                _scrollController?.reset();
+                                setState(() {
+                                  _currentPosition = ScorePosition.initial();
+                                });
+                              }
+                            : null,
+                        tooltip: 'Reset to beginning',
+                      ),
+
                       // Record/Stop Button
                       FloatingActionButton.large(
                         onPressed: _toggleRecording,
@@ -249,34 +520,30 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
                         ),
                       ),
 
-                      // Zoom Controls
-                      Column(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.zoom_in),
-                            onPressed: () {
-                              // TODO: Implement zoom in
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.zoom_out),
-                            onPressed: () {
-                              // TODO: Implement zoom out
-                            },
-                          ),
-                        ],
-                      ),
-
                       // Auto-scroll Toggle
                       IconButton.filled(
-                        icon: const Icon(Icons.auto_awesome),
-                        onPressed: () {
-                          // TODO: Toggle auto-scroll
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Auto-scroll toggled')),
-                          );
-                        },
+                        icon: Icon(
+                          _autoScrollEnabled
+                              ? Icons.auto_awesome
+                              : Icons.auto_awesome_outlined,
+                        ),
+                        onPressed: _isScoreLoaded
+                            ? () {
+                                setState(() {
+                                  _autoScrollEnabled = !_autoScrollEnabled;
+                                  _scrollController?.setEnabled(_autoScrollEnabled);
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Auto-scroll ${_autoScrollEnabled ? "enabled" : "disabled"}',
+                                    ),
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              }
+                            : null,
+                        tooltip: 'Toggle auto-scroll',
                       ),
                     ],
                   ),
@@ -297,13 +564,25 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Debug: Detected Notes (Mock Mode)',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Debug: Detected Notes (Mock Mode)',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              Text(
+                'Position: ${_currentPosition.measureIndex + 1}/${_score?.measureCount ?? 0} • Note ${_currentPosition.noteIndex + 1}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           latestNote.when(
@@ -332,5 +611,16 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> {
         ],
       ),
     );
+  }
+
+  /// Get color for synchronization confidence indicator
+  Color _getSyncColor(double confidence) {
+    if (confidence >= 0.8) {
+      return Colors.greenAccent;
+    } else if (confidence >= 0.5) {
+      return Colors.orangeAccent;
+    } else {
+      return Colors.redAccent;
+    }
   }
 }
