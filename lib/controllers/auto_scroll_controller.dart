@@ -177,8 +177,7 @@ class AutoScrollController extends ChangeNotifier {
 }
 
 /// Alternative implementation using AnimationController for smoother scrolling
-class AnimatedAutoScrollController extends AutoScrollController
-    with SingleTickerProviderStateMixin {
+class AnimatedAutoScrollController extends AutoScrollController {
   late AnimationController _animationController;
   Animation<double>? _scrollAnimation;
 

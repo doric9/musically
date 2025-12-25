@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
@@ -111,7 +112,7 @@ class ZoomController extends ChangeNotifier {
 
   /// Calculate screen diagonal in pixels
   double _calculateDiagonal(double width, double height) {
-    return (width * width + height * height).sqrt();
+    return sqrt(width * width + height * height);
   }
 
   /// Get zoom value for a specific zoom level
