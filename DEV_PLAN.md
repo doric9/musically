@@ -31,7 +31,7 @@ A real-time piano score following app that listens to piano playing and displays
 
 #### Backend/API
 - **Runtime**: Node.js with Express or Next.js API routes
-- **AI Integration**: Google Gemini 2.5 Flash Native Audio (Live API)
+- **AI Integration**: Google Gemini 3 Flash (Live API) - 3x cheaper for audio input
 - **Alternative Audio Analysis**: Basic Pitch or Spotify's audio analysis as fallback
 - **Database**: PostgreSQL for user sessions, Firebase for real-time sync
 - **File Storage**: Cloud Storage for uploaded scores (MusicXML/PDF)
@@ -117,7 +117,7 @@ class AudioInputManager {
 ---
 
 ### 2. Gemini Integration Service
-**Responsibility**: Real-time audio-to-note transcription using Gemini 2.5 Flash Native Audio
+**Responsibility**: Real-time audio-to-note transcription using Gemini 3 Flash
 
 **Implementation**:
 ```typescript
@@ -625,7 +625,7 @@ Server -> Client:
 # Google Cloud / Gemini
 GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GEMINI_API_KEY=your-api-key
-GEMINI_MODEL=gemini-2.5-flash-native-audio
+GEMINI_MODEL=gemini-3-flash
 
 # Backend
 PORT=3000
@@ -700,6 +700,7 @@ STORAGE_BUCKET=musically-scores
 ### Risk 1: Gemini API Cost
 **Impact**: High usage costs for real-time audio streaming
 **Mitigation**:
+- Using Gemini 3 Flash ($1/1M audio tokens vs $3/1M for 2.5 Flash) - 3x cost savings
 - Implement usage quotas per user
 - Offer freemium model (limited sessions)
 - Use efficient audio compression
@@ -737,6 +738,8 @@ STORAGE_BUCKET=musically-scores
 - [Audio understanding | Gemini API](https://ai.google.dev/gemini-api/docs/audio)
 - [Gemini Live API overview](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api)
 - [Get started with Live API](https://ai.google.dev/gemini-api/docs/live)
+- [Gemini 3 Flash - Build with frontier intelligence](https://blog.google/technology/developers/build-with-gemini-3-flash/)
+- [Gemini API Pricing](https://ai.google.dev/gemini-api/docs/pricing) - Gemini 3 Flash: $1/1M audio tokens (3x cheaper than 2.5 Flash)
 
 ### Audio-to-MIDI Tools
 - [Building a GenAI-Powered Audio-to-MIDI Transcription Pipeline](https://medium.com/@bmonobina/building-a-genai-powered-audio-to-midi-transcription-pipeline-with-google-cloud-and-vertex-ai-90d910d2ec4c)
