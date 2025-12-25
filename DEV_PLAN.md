@@ -16,30 +16,40 @@ A real-time piano score following app that listens to piano playing and displays
 
 ### Tech Stack
 
-#### Frontend
-- **Framework**: React with TypeScript
-- **Score Rendering**: [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/) or [VexFlow](https://vexflow.com/)
-- **UI Library**: Tailwind CSS + shadcn/ui for responsive design
+#### Mobile App (Android)
+- **Framework**: React Native with TypeScript
+- **Platform**: Android (primary), iOS compatible (future)
+- **Navigation**: React Navigation
+- **Score Rendering**:
+  - react-native-svg + Custom renderer for MusicXML
+  - OR WebView with VexFlow/OSMD for score display
+- **UI Library**: React Native Paper or NativeBase
 - **State Management**: Zustand or Redux Toolkit
-- **Build Tool**: Vite
+- **Build Tool**: Metro bundler (React Native default)
 
 #### Audio Processing
-- **Audio Capture**: Web Audio API (MediaStream)
-- **Pitch Detection**: Web Audio API AnalyserNode + Custom pitch detection algorithm
-- **Audio-to-MIDI**: Integration with Gemini API for intelligent transcription
+- **Audio Capture**:
+  - react-native-audio-recorder-player for recording
+  - react-native-audio for real-time audio capture
+  - Android AudioRecord API (native module if needed)
+- **Audio Format**: PCM audio streaming to Gemini
+- **Audio-to-MIDI**: Integration with Gemini 3 Flash API for intelligent transcription
+- **Permissions**: RECORD_AUDIO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 - **Format Support**: MusicXML, MIDI input
 
 #### Backend/API
-- **Runtime**: Node.js with Express or Next.js API routes
+- **Runtime**: Node.js with Express or Firebase Cloud Functions
 - **AI Integration**: Google Gemini 3 Flash (Live API) - 3x cheaper for audio input
 - **Alternative Audio Analysis**: Basic Pitch or Spotify's audio analysis as fallback
-- **Database**: PostgreSQL for user sessions, Firebase for real-time sync
-- **File Storage**: Cloud Storage for uploaded scores (MusicXML/PDF)
+- **Database**: Firebase Firestore for user sessions and real-time sync
+- **File Storage**: Firebase Storage for uploaded scores (MusicXML/PDF)
+- **Authentication**: Firebase Auth (optional)
 
 #### Deployment
-- **Frontend**: Vercel or Netlify
-- **Backend**: Google Cloud Run or Vercel serverless functions
-- **Mobile**: Progressive Web App (PWA) for cross-platform support
+- **Android**: Google Play Store (APK/AAB)
+- **Backend**: Firebase Cloud Functions or Google Cloud Run
+- **Distribution**: Initially beta testing via Firebase App Distribution
+- **Future**: iOS App Store (React Native allows easy porting)
 
 ---
 
@@ -47,12 +57,12 @@ A real-time piano score following app that listens to piano playing and displays
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      USER DEVICE                             │
+│                   ANDROID DEVICE                             │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │              React Frontend (PWA)                       │ │
+│  │         React Native App (TypeScript)                   │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │ │
 │  │  │ Audio Input  │  │ Score Viewer │  │ Zoom/Scroll │  │ │
-│  │  │   Module     │  │   Component  │  │   Manager   │  │ │
+│  │  │   Module     │  │  (SVG/WebV)  │  │   Manager   │  │ │
 │  │  └──────┬───────┘  └──────▲───────┘  └──────▲──────┘  │ │
 │  │         │                  │                  │         │ │
 │  │         │     ┌────────────┴──────────────────┘         │ │
@@ -60,59 +70,91 @@ A real-time piano score following app that listens to piano playing and displays
 │  │         │     └────────────▲──────────────────┐         │ │
 │  └─────────┼──────────────────┼──────────────────┼─────────┘ │
 │            │                  │                  │           │
+│  ┌─────────▼──────────────┐   │                  │           │
+│  │ Android Audio APIs     │   │                  │           │
+│  │ ┌────────────────────┐ │   │                  │           │
+│  │ │ AudioRecord        │ │   │                  │           │
+│  │ │ react-native-audio │ │   │                  │           │
+│  │ └────────────────────┘ │   │                  │           │
+│  └─────────┬──────────────┘   │                  │           │
+│            │                  │                  │           │
 └────────────┼──────────────────┼──────────────────┼───────────┘
              │                  │                  │
+             │ (HTTPS/WebSocket)│                  │
              ▼                  │                  │
-┌─────────────────────────┐     │                  │
-│  Web Audio API          │     │                  │
-│  ┌──────────────────┐   │     │                  │
-│  │ MediaStream      │   │     │                  │
-│  │ AnalyserNode     │   │     │                  │
-│  │ AudioContext     │   │     │                  │
-│  └──────────────────┘   │     │                  │
-└───────────┬─────────────┘     │                  │
-            │                   │                  │
-            ▼                   │                  │
-┌─────────────────────────┐     │                  │
-│   Backend API Server    │     │                  │
-│  ┌──────────────────┐   │     │                  │
-│  │ Gemini Live API  │───┼─────┘                  │
-│  │ (Audio Analysis) │   │                        │
-│  ├──────────────────┤   │                        │
-│  │ Score Manager    │───┼────────────────────────┘
-│  │ (MusicXML/MIDI)  │   │
-│  ├──────────────────┤   │
-│  │ Position Tracker │   │
-│  │ (Note → Score)   │   │
-│  └──────────────────┘   │
-└─────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│          Backend (Firebase/Cloud Run)            │
+│  ┌────────────────────────────────────────────┐  │
+│  │  Gemini 3 Flash Live API Integration      │  │
+│  │  ┌──────────────────────────────────────┐ │  │
+│  │  │ Audio Stream Handler                 │ │  │
+│  │  │ (Receives PCM audio chunks)          │ │  │
+│  │  └───────────┬──────────────────────────┘ │  │
+│  │              │                             │  │
+│  │              ▼                             │  │
+│  │  ┌──────────────────────────────────────┐ │  │
+│  │  │ Gemini 3 Flash API                   │ │  │
+│  │  │ - Real-time audio transcription      │ │  │
+│  │  │ - Returns: notes, timing, confidence │ │  │
+│  │  └───────────┬──────────────────────────┘ │  │
+│  └──────────────┼────────────────────────────┘  │
+│                 │                                │
+│  ┌──────────────▼────────────────────────────┐  │
+│  │ Firebase Services                         │  │
+│  │ - Firestore: User sessions, scores        │  │
+│  │ - Storage: MusicXML/PDF files             │  │
+│  │ - Auth: User authentication (optional)    │  │
+│  └───────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Core Components
 
-### 1. Audio Input Module
-**Responsibility**: Capture and preprocess audio from microphone
+### 1. Audio Input Module (React Native)
+**Responsibility**: Capture and preprocess audio from microphone on Android
 
 **Implementation**:
 ```typescript
+import AudioRecord from 'react-native-audio-record';
+
 class AudioInputManager {
-  - captureAudioStream(): MediaStream
-  - initializeAudioContext(): AudioContext
-  - createAnalyserNode(): AnalyserNode
-  - getAudioData(): Float32Array
-  - detectPitch(): number[]
-  - sendToGemini(): Promise<NoteData>
+  private audioRecord: AudioRecord;
+  private audioBuffer: number[] = [];
+
+  - async requestPermissions(): Promise<boolean>
+  - initializeAudioRecord(config: AudioConfig): void
+  - startRecording(): void
+  - stopRecording(): void
+  - onAudioData(data: AudioData): void
+  - processAudioChunk(chunk: Float32Array): void
+  - sendToGemini(audioData: Float32Array): Promise<NoteData>
+}
+
+// Audio configuration for Android
+interface AudioConfig {
+  sampleRate: 44100;          // Hz
+  channels: 1;                // Mono
+  bitsPerSample: 16;          // 16-bit PCM
+  audioSource: 'MIC';         // Microphone input
+  bufferSize: 4096;           // samples
 }
 ```
 
 **Key Features**:
-- Request microphone permission
-- Real-time audio buffering (low latency < 100ms)
-- Frequency analysis using FFT
-- Noise reduction/filtering
-- Send audio chunks to Gemini Live API for transcription
+- Request Android RECORD_AUDIO permission at runtime
+- Real-time PCM audio capture using AudioRecord
+- Audio buffering with low latency (< 100ms target)
+- Convert PCM to format suitable for Gemini API
+- Stream audio chunks via WebSocket to backend
+- Handle audio focus and lifecycle (pause on phone calls)
+
+**Android-Specific Considerations**:
+- Handle different Android versions (API level compatibility)
+- Audio session management (MediaPlayer compatibility)
+- Battery optimization (reduce sample rate when battery low)
+- Background audio permission (Android 9+)
 
 ---
 
@@ -158,32 +200,53 @@ Return as JSON: { notes: [{ pitch, timestamp, duration, velocity }] }
 
 ---
 
-### 3. Score Rendering Engine
-**Responsibility**: Display sheet music and highlight current position
+### 3. Score Rendering Engine (React Native)
+**Responsibility**: Display sheet music and highlight current position on Android
 
-**Implementation**:
+**Implementation Options**:
+
+**Option A: WebView with OSMD/VexFlow (Recommended)**
 ```typescript
+import { WebView } from 'react-native-webview';
+
 class ScoreRenderer {
+  private webViewRef: React.RefObject<WebView>;
+
   - loadScore(musicXML: string): void
-  - renderToCanvas(): void
+  - injectJavaScript(code: string): void
   - highlightMeasure(measureIndex: number): void
   - highlightNote(noteId: string): void
-  - getNoteBoundingBox(noteId: string): DOMRect
+  - onMessage(event: WebViewMessageEvent): void
+  - getNoteBoundingBox(noteId: string): Promise<Rect>
 }
 ```
 
-**Library Choice**: OpenSheetMusicDisplay
-- Supports MusicXML (industry standard)
-- HTML5 Canvas rendering
-- Note-level addressability
-- Customizable styling
+**Option B: react-native-svg (Custom Renderer)**
+```typescript
+import Svg, { Path, Circle, Text } from 'react-native-svg';
+
+class SVGScoreRenderer {
+  - parseMusicXML(xml: string): ScoreElements
+  - renderStaff(staff: Staff): JSX.Element
+  - renderNotes(notes: Note[]): JSX.Element[]
+  - highlightNote(noteId: string): void
+}
+```
+
+**Recommended Approach**: WebView + OpenSheetMusicDisplay
+- Leverage mature web libraries (OSMD, VexFlow)
+- MusicXML support out of the box
+- Better performance for complex scores
+- Easier highlighting and interaction via JavaScript injection
+- Message passing between React Native ↔ WebView for events
 
 **Features**:
-- Load MusicXML files
-- Render to scrollable canvas
-- Highlight current note/measure
-- Support for multi-staff piano scores
-- Dynamic font sizing for zoom
+- Load MusicXML files from local storage or Firebase
+- Render to scrollable view (ScrollView wrapper)
+- Highlight current note/measure with color overlay
+- Support for multi-staff piano scores (grand staff)
+- Dynamic zoom via WebView scale or SVG viewBox
+- Gesture handling (pinch-to-zoom, pan)
 
 ---
 
@@ -221,58 +284,89 @@ class SyncEngine {
 
 ---
 
-### 5. Auto-Scroll Manager
-**Responsibility**: Smooth scrolling to keep current measure visible
+### 5. Auto-Scroll Manager (React Native)
+**Responsibility**: Smooth scrolling to keep current measure visible on Android
 
 **Implementation**:
 ```typescript
-class AutoScrollManager {
-  - viewportHeight: number
-  - scrollPosition: number
-  - targetMeasure: number
+import { ScrollView, Animated } from 'react-native';
 
-  - calculateScrollTarget(measureBounds: DOMRect): number
+class AutoScrollManager {
+  private scrollViewRef: React.RefObject<ScrollView>;
+  private scrollAnim: Animated.Value;
+  private viewportHeight: number;
+  private scrollPosition: number;
+  private targetMeasure: number;
+  private isUserScrolling: boolean = false;
+
+  - calculateScrollTarget(measureBounds: Rect): number
   - smoothScrollTo(targetY: number, duration: number): void
+  - animateScroll(targetY: number): void
   - predictScrollPosition(tempo: number): number
   - adjustScrollSpeed(playbackSpeed: number): void
+  - onScrollBeginDrag(): void  // User started scrolling
+  - onScrollEndDrag(): void    // User stopped scrolling
 }
 ```
 
 **Features**:
-- Smooth CSS transitions (300-500ms)
-- Look-ahead: Show 2-3 measures ahead
-- Adaptive scrolling based on tempo
+- Smooth animations using Animated API (300-500ms easing)
+- Look-ahead: Show 2-3 measures ahead of current position
+- Adaptive scrolling based on detected tempo
 - Snap to measure boundaries
-- Pause scrolling when user manually scrolls (resume after 3 seconds)
+- Pause auto-scroll when user manually scrolls (resume after 3 seconds)
+- Handle orientation changes (portrait/landscape)
+
+**React Native Specific**:
+- Use `ScrollView.scrollTo()` with `animated: true`
+- Monitor scroll events with `onScroll` handler
+- Detect user interaction vs programmatic scroll
+- Optimize scroll performance with `removeClippedSubviews`
 
 ---
 
-### 6. Intelligent Zoom Controller
-**Responsibility**: Dynamically zoom to fit current section on small screens
+### 6. Intelligent Zoom Controller (React Native)
+**Responsibility**: Dynamically zoom to fit current section on Android screens
 
 **Implementation**:
 ```typescript
+import { Dimensions, PanResponder, Animated } from 'react-native';
+
 class ZoomController {
-  - baseZoomLevel: number = 1.0
-  - currentZoomLevel: number
-  - focusArea: BoundingBox
+  private baseZoomLevel: number = 1.0;
+  private currentZoomLevel: number;
+  private zoomAnim: Animated.Value;
+  private panResponder: PanResponder;
+  private focusArea: BoundingBox;
+  private screenDimensions: { width: number; height: number };
 
   - calculateOptimalZoom(measure: Measure, screenSize: Dimensions): number
   - zoomToMeasure(measureIndex: number): void
   - zoomToNoteGroup(notes: Note[]): void
   - animateZoomTransition(from: number, to: number): void
+  - handlePinchGesture(event: GestureEvent): void
+  - onLayout(event: LayoutChangeEvent): void
 }
 ```
 
-**Zoom Strategy**:
-- **Mobile (< 768px)**: Zoom to show 1-2 measures
-- **Tablet (768-1024px)**: Show 2-4 measures
-- **Desktop (> 1024px)**: Show full system or more
+**Zoom Strategy** (Android screen sizes):
+- **Phone Portrait (< 600dp)**: Zoom to show 1-2 measures
+- **Phone Landscape**: Show 2-3 measures
+- **Tablet (> 600dp)**: Show 3-5 measures
+- **Large Tablet (> 800dp)**: Show full system
 
 **Adaptive Zoom**:
-- Dense sections (many notes): Zoom in more
-- Sparse sections: Zoom out to show context
-- Respect user manual zoom (override for 5 seconds)
+- Dense sections (many notes): Zoom in more for readability
+- Sparse sections: Zoom out to show musical context
+- Respect user manual zoom with pinch gesture (override auto-zoom for 5 seconds)
+- Save user zoom preference per score in AsyncStorage
+
+**React Native Specific**:
+- Use `react-native-gesture-handler` for smooth pinch-to-zoom
+- Animated.Value for zoom transformations
+- Handle orientation changes (Dimensions.addEventListener)
+- WebView: Inject JavaScript to set zoom level
+- SVG: Adjust viewBox dimensions
 
 ---
 
@@ -329,51 +423,92 @@ interface PlaybackState {
 
 ## Implementation Phases
 
-### Phase 1: Project Setup & Basic UI (Week 1)
+### Phase 1: React Native Project Setup & Basic UI (Week 1)
 **Goals**:
-- Initialize React + TypeScript project
+- Initialize React Native Android project
 - Set up basic score viewer
-- Implement responsive layout
+- Implement Android UI layout
 
 **Tasks**:
-1. Create React app with Vite
-2. Install dependencies (OpenSheetMusicDisplay, Tailwind, etc.)
-3. Set up project structure and routing
-4. Create basic UI components:
-   - Header with controls (play/pause, settings)
-   - Score viewer container
-   - Zoom controls
-5. Implement basic MusicXML loading and rendering
-6. Test with sample piano scores
+1. Initialize React Native project with TypeScript template
+   ```bash
+   npx react-native init Musically --template react-native-template-typescript
+   ```
+2. Configure Android development environment (Android Studio, SDK)
+3. Install core dependencies:
+   - `react-navigation` (navigation)
+   - `react-native-webview` (for score rendering)
+   - `react-native-gesture-handler` (gestures)
+   - `react-native-paper` or `nativebase` (UI components)
+   - `@react-native-async-storage/async-storage` (local storage)
+4. Set up project structure:
+   ```
+   src/
+   ├── components/      (ScoreViewer, AudioControls, etc.)
+   ├── screens/         (HomeScreen, PracticeScreen, etc.)
+   ├── services/        (AudioService, GeminiService, etc.)
+   ├── stores/          (state management)
+   ├── utils/           (helpers)
+   └── types/           (TypeScript types)
+   ```
+5. Create basic UI screens:
+   - Home screen with score selection
+   - Practice screen with score viewer
+   - Settings screen
+6. Implement WebView-based score viewer with OSMD
+7. Add sample MusicXML files to test rendering
+8. Configure Android permissions in `AndroidManifest.xml`
 
 **Deliverables**:
-- Working app that can load and display piano scores
-- Responsive layout for mobile/tablet/desktop
-- Manual zoom and scroll controls
+- Working React Native Android app
+- Can load and display piano scores in WebView
+- Basic navigation between screens
+- Runs on Android emulator and physical device
+- Manual zoom and scroll controls working
 
 ---
 
 ### Phase 2: Audio Capture & Gemini Integration (Week 2-3)
 **Goals**:
-- Capture microphone audio
-- Integrate Gemini Live API
+- Capture microphone audio on Android
+- Integrate Gemini 3 Flash Live API
 - Real-time note detection
 
 **Tasks**:
-1. Implement audio input using Web Audio API
-2. Set up Google Cloud project and enable Gemini API
-3. Create backend API for Gemini Live API proxy
-4. Implement audio streaming to Gemini
-5. Parse Gemini responses into structured note data
-6. Display detected notes in real-time (console/debug view)
-7. Implement pitch detection fallback using Web Audio API
-8. Test with recorded piano audio samples
+1. **Android Audio Setup**:
+   - Install `react-native-audio-record` or `react-native-audio`
+   - Request RECORD_AUDIO permission at runtime
+   - Configure audio recording parameters (44.1kHz, mono, 16-bit PCM)
+   - Test audio capture on physical device (emulator has limited audio)
+
+2. **Backend API Setup**:
+   - Set up Firebase project or Node.js backend on Cloud Run
+   - Enable Gemini API in Google Cloud Console
+   - Create WebSocket endpoint for real-time audio streaming
+   - Implement Gemini 3 Flash Live API integration
+   - Set up environment variables and API keys
+
+3. **Audio Streaming Pipeline**:
+   - Capture audio chunks (100ms buffers)
+   - Convert to appropriate format for Gemini API
+   - Stream audio via WebSocket to backend
+   - Backend forwards to Gemini Live API
+   - Receive note detection responses in real-time
+
+4. **Integration & Testing**:
+   - Parse Gemini responses into NoteData format
+   - Display detected notes in debug overlay
+   - Add audio visualization (waveform/spectrum)
+   - Test with pre-recorded piano samples
+   - Test with live piano/keyboard input
+   - Measure and optimize latency (target < 200ms)
 
 **Deliverables**:
-- Real-time audio capture and visualization
-- Gemini API integration working
+- Real-time audio capture working on Android
+- Gemini 3 Flash API integration functional
 - Note detection accuracy > 90% for clean audio
-- Debug panel showing detected notes
+- Debug panel showing detected notes with confidence scores
+- End-to-end latency < 300ms (Android → Backend → Gemini → Response)
 
 ---
 
@@ -515,22 +650,31 @@ interface PlaybackState {
 3. **Training/Fine-tuning**: If available, fine-tune on piano audio dataset
 4. **Fallback**: Use Basic Pitch (Spotify's open-source model) when Gemini fails
 
-### Challenge 2: Real-time Performance
-**Problem**: Audio processing + AI inference + rendering = potential lag
+### Challenge 2: Real-time Performance (Android)
+**Problem**: Audio processing + AI inference + rendering = potential lag on mobile devices
 
 **Solutions**:
 1. **Optimized Pipeline**:
-   - Web Workers for audio processing (off main thread)
-   - Debounce Gemini API calls (batch audio chunks)
-   - Request Animation Frame for smooth rendering
+   - Use native audio processing (avoid JS bridge overhead)
+   - Process audio in separate thread (React Native native module)
+   - Batch audio chunks efficiently (minimize network calls)
+   - Use Animated API for 60fps rendering
+   - Optimize WebView performance (disable unnecessary features)
 2. **Predictive Algorithms**:
-   - Predict next notes based on score
-   - Pre-render upcoming measures
-   - Cache rendered score segments
+   - Predict next notes based on score and tempo
+   - Pre-load upcoming measures in WebView
+   - Cache rendered score segments in memory
+   - Preemptive scrolling based on note velocity
 3. **Adaptive Quality**:
-   - Reduce audio sample rate on slower devices
-   - Simplify rendering on mobile
-   - Progressive enhancement
+   - Reduce audio sample rate on low-end devices (22kHz vs 44kHz)
+   - Simplify score rendering (hide ornaments, dynamics)
+   - Lower WebView resolution on older devices
+   - Monitor battery level and adjust accordingly
+4. **Android Optimization**:
+   - Use `InteractionManager` to defer non-critical tasks
+   - Enable Hermes JavaScript engine for better performance
+   - Optimize bundle size with tree shaking
+   - Use `react-native-fast-image` for efficient image loading
 
 ### Challenge 3: Timing Variations
 **Problem**: Human playing is not perfectly aligned with score timing
@@ -560,22 +704,38 @@ interface PlaybackState {
    - Option to show single staff for beginners
    - Hide less important notes (grace notes, ornaments)
 
-### Challenge 5: Mobile Performance
-**Problem**: Limited CPU, GPU, battery on phones
+### Challenge 5: Android Device Performance & Battery
+**Problem**: Limited CPU, GPU, battery on Android phones; wide range of device capabilities
 
 **Solutions**:
 1. **Efficient Rendering**:
-   - Use Canvas instead of SVG for better performance
-   - Lazy render only visible measures
-   - Reduce re-renders with React.memo and useMemo
+   - Use WebView with hardware acceleration enabled
+   - Lazy load measures (render only visible viewport)
+   - Optimize React Native re-renders with React.memo and useMemo
+   - Use `removeClippedSubviews` on ScrollView
+   - Enable Hermes for faster JS execution
 2. **Battery Optimization**:
-   - Reduce Gemini API call frequency when on battery
-   - Use requestIdleCallback for non-critical tasks
-   - Implement sleep mode when idle
+   - Monitor battery level with `react-native-device-info`
+   - Reduce Gemini API call frequency when battery < 20%
+   - Lower audio sample rate on low battery (44.1kHz → 22kHz)
+   - Pause background processing when app is inactive
+   - Use Android's Doze mode compatibility
 3. **Network Efficiency**:
-   - Cache scores locally (IndexedDB)
-   - Compress audio before sending to API
-   - Use WebSocket for Gemini (avoid HTTP overhead)
+   - Cache scores locally with AsyncStorage or SQLite
+   - Compress audio before sending (use Opus codec if supported)
+   - Use WebSocket for persistent connection (lower overhead than HTTP)
+   - Implement retry logic with exponential backoff
+   - Download scores on WiFi, use cached versions on cellular
+4. **Device Compatibility**:
+   - Support Android API 21+ (Android 5.0+)
+   - Test on low-end devices (2GB RAM, older processors)
+   - Graceful degradation (disable features on old devices)
+   - Device-specific audio latency compensation
+5. **Memory Management**:
+   - Clear audio buffers after processing
+   - Unload unused score data
+   - Use pagination for large score libraries
+   - Monitor memory usage and warn user if critical
 
 ---
 
@@ -621,62 +781,155 @@ Server -> Client:
 
 ## Environment Variables
 
+### Backend (.env)
 ```env
 # Google Cloud / Gemini
 GOOGLE_CLOUD_PROJECT_ID=your-project-id
 GEMINI_API_KEY=your-api-key
 GEMINI_MODEL=gemini-3-flash
 
+# Firebase (if using Firebase)
+FIREBASE_PROJECT_ID=your-firebase-project
+FIREBASE_PRIVATE_KEY=your-private-key
+FIREBASE_CLIENT_EMAIL=your-client-email
+
 # Backend
 PORT=3000
 NODE_ENV=development
+WEBSOCKET_PORT=8080
 
-# Database (optional)
-DATABASE_URL=postgresql://...
-
-# Storage (optional)
+# Storage
 STORAGE_BUCKET=musically-scores
+```
+
+### React Native App (config.ts)
+```typescript
+export const Config = {
+  API_BASE_URL: __DEV__
+    ? 'http://10.0.2.2:3000'  // Android emulator
+    : 'https://your-backend.com',
+
+  WEBSOCKET_URL: __DEV__
+    ? 'ws://10.0.2.2:8080'
+    : 'wss://your-backend.com',
+
+  FIREBASE_CONFIG: {
+    apiKey: 'your-api-key',
+    authDomain: 'your-app.firebaseapp.com',
+    projectId: 'your-project-id',
+    storageBucket: 'your-app.appspot.com',
+    messagingSenderId: 'your-sender-id',
+    appId: 'your-app-id',
+  },
+
+  AUDIO_CONFIG: {
+    sampleRate: 44100,
+    channels: 1,
+    bitsPerSample: 16,
+    chunkDuration: 100, // ms
+  },
+};
+```
+
+### Android Configuration (AndroidManifest.xml)
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 ```
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests
+### Unit Tests (Jest + React Native Testing Library)
+```bash
+npm test
+```
 - Audio processing functions
-- Note matching algorithm
-- Score parsing
-- Zoom/scroll calculations
+- Note matching algorithm (DTW implementation)
+- MusicXML parsing logic
+- Zoom/scroll calculation algorithms
+- State management (stores/reducers)
+- Utility functions
 
 ### Integration Tests
-- Audio capture -> Gemini -> Note detection pipeline
-- Score loading -> Rendering
-- Sync engine with mock playback
+```bash
+npm run test:integration
+```
+- Android audio capture → WebSocket → Backend → Gemini pipeline
+- Score loading from Firebase → WebView rendering
+- Sync engine with mock audio input
+- Permission handling flows (runtime permissions)
+- Network retry logic and error recovery
 
-### E2E Tests (Playwright/Cypress)
-- Complete user flow: Load score -> Play -> Auto-scroll
-- Mobile responsive behavior
-- Error handling (API failures, permission denied)
+### E2E Tests (Detox)
+```bash
+detox test --configuration android.emu.debug
+```
+- Complete user flow: Launch → Select score → Grant permissions → Play → Auto-scroll
+- Permission handling (microphone, storage)
+- Error states (no network, API failure, invalid score)
+- Background/foreground transitions
+- Orientation changes (portrait/landscape)
+- Different Android devices and API levels
 
 ### Performance Tests
-- Audio latency benchmarks (target: < 200ms)
-- Rendering FPS (target: 60fps)
-- Memory usage (target: < 100MB on mobile)
+- **Audio Latency**: Measure end-to-end latency (target: < 300ms on Android)
+  - Note played → Audio captured → Sent to Gemini → Response → UI update
+- **Rendering FPS**: Monitor frame rate during scroll/zoom (target: 60fps)
+  - Use React DevTools Profiler
+  - Android Systrace for native performance
+- **Memory Usage**: Profile with Android Studio Memory Profiler
+  - Target: < 150MB RAM on mid-range devices
+  - No memory leaks during extended sessions
+- **Battery Drain**: Measure power consumption
+  - Target: < 10% battery per hour of practice
+  - Test on physical devices, not emulator
+
+### Device Testing Matrix
+**Minimum supported**: Android API 21 (Android 5.0)
+- **Low-end**: Android 8.0, 2GB RAM, Snapdragon 400-series
+- **Mid-range**: Android 11, 4GB RAM, Snapdragon 600-series
+- **High-end**: Android 13+, 8GB+ RAM, Snapdragon 800-series
+- **Tablet**: 10" screen, Android 11+
 
 ### User Testing
-- Test with real pianists of various skill levels
-- Gather feedback on timing accuracy
-- Measure usability on different devices
+- Test with real pianists (beginner, intermediate, advanced)
+- Gather feedback on:
+  - Note detection accuracy
+  - Auto-scroll timing
+  - Zoom level comfort
+  - Overall usability
+- Test on multiple devices (different screen sizes, Android versions)
+- A/B test different scroll speeds and zoom strategies
 
 ---
 
 ## Success Metrics
 
-1. **Accuracy**: > 90% note detection accuracy for clean audio
-2. **Latency**: < 200ms from note played to highlight on screen
-3. **Performance**: 60fps rendering, < 100ms scroll lag
-4. **Usability**: Users can comfortably play on smartphone screen
-5. **Reliability**: < 1% error rate in sync engine over 5-minute session
+1. **Accuracy**: > 90% note detection accuracy for clean audio (measured with test dataset)
+2. **Latency**: < 300ms from note played to highlight on screen (Android end-to-end)
+3. **Performance**:
+   - 60fps rendering during scroll and zoom animations
+   - < 100ms scroll lag
+   - < 150MB RAM usage on mid-range devices
+   - < 10% battery drain per hour
+4. **Usability**:
+   - Users can comfortably read and play on 5.5"+ smartphone screens
+   - Score is readable without manual zoom adjustment
+   - App is usable in both portrait and landscape orientations
+5. **Reliability**:
+   - < 1% error rate in sync engine over 5-minute practice session
+   - < 0.1% crash rate
+   - Works offline (scores cached locally)
+   - Graceful degradation when network is unavailable
+6. **User Satisfaction** (post-beta survey):
+   - 4+ stars average rating
+   - 80%+ would recommend to other pianists
+   - 70%+ prefer this over traditional sheet music
 
 ---
 
@@ -715,12 +968,14 @@ STORAGE_BUCKET=musically-scores
 - Implement fallback algorithms
 
 ### Risk 3: Network Dependency
-**Impact**: App unusable without internet
+**Impact**: App unusable without internet on Android
 **Mitigation**:
-- Implement offline mode with local pitch detection
-- Cache Gemini responses for common patterns
-- Progressive Web App for offline capability
-- Clear UX for network status
+- Implement offline mode with local pitch detection library (TensorFlow Lite model)
+- Cache scores locally with AsyncStorage/SQLite
+- Download scores over WiFi for offline practice
+- Show clear network status indicator
+- Queue audio analysis requests when offline, sync when online
+- Provide degraded experience: score viewing without real-time following
 
 ### Risk 4: Limited Score Library
 **Impact**: Users have nothing to play
@@ -750,25 +1005,65 @@ STORAGE_BUCKET=musically-scores
 - VexFlow: https://vexflow.com/
 - ABCjs: https://www.abcjs.net/
 
+### React Native & Android Development
+- React Native Documentation: https://reactnative.dev/
+- React Native Audio Libraries:
+  - react-native-audio-record: https://github.com/goodatlas/react-native-audio-record
+  - react-native-audio: https://github.com/jsierles/react-native-audio
+- react-native-webview: https://github.com/react-native-webview/react-native-webview
+- React Navigation: https://reactnavigation.org/
+- Android Developer Guide: https://developer.android.com/
+- Detox (E2E Testing): https://wix.github.io/Detox/
+
 ### Audio Processing
-- Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+- Android AudioRecord API: https://developer.android.com/reference/android/media/AudioRecord
 - Basic Pitch (Spotify): https://github.com/spotify/basic-pitch
+- TensorFlow Lite for Audio: https://www.tensorflow.org/lite/examples/audio_classification/overview
 
 ### Similar Projects (for inspiration)
 - Soundslice: https://www.soundslice.com/
 - Flat.io: https://flat.io/
 - MuseScore: https://musescore.org/
 
+### Firebase & Backend
+- Firebase for React Native: https://rnfirebase.io/
+- Firebase Cloud Functions: https://firebase.google.com/docs/functions
+- Google Cloud Run: https://cloud.google.com/run/docs
+
 ---
 
 ## Next Steps
 
 1. **Review and approve this plan**
-2. **Set up development environment**
-3. **Create GitHub repository structure**
-4. **Start Phase 1: Project setup**
-5. **Establish CI/CD pipeline**
-6. **Begin implementation**
+2. **Set up Android development environment**:
+   - Install Android Studio
+   - Install Java JDK 11+
+   - Configure Android SDK (API 21-34)
+   - Set up Android emulator or physical device
+   - Install Node.js 18+ and npm
+3. **Initialize React Native project**:
+   ```bash
+   npx react-native init Musically --template react-native-template-typescript
+   cd Musically
+   npm install
+   ```
+4. **Set up Firebase project**:
+   - Create Firebase project in console
+   - Enable Firestore, Storage, Authentication
+   - Download google-services.json for Android
+5. **Set up backend API**:
+   - Create Node.js/Express server or Firebase Cloud Functions
+   - Enable Gemini API in Google Cloud Console
+   - Set up WebSocket server for real-time audio streaming
+6. **Configure version control**:
+   - Initialize git repository
+   - Set up .gitignore (exclude API keys, google-services.json)
+   - Create development, staging, production branches
+7. **Establish CI/CD pipeline**:
+   - GitHub Actions or GitLab CI for automated builds
+   - Firebase App Distribution for beta testing
+   - Automated testing on PR merge
+8. **Begin Phase 1 implementation**
 
 ---
 
