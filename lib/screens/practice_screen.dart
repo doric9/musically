@@ -7,7 +7,9 @@ import '../providers/audio_providers.dart';
 import '../models/score.dart';
 import '../models/note_data.dart';
 import '../widgets/score_viewer.dart';
+import '../widgets/stats_widgets.dart';
 import '../services/score_sync_service.dart';
+import '../services/practice_stats_service.dart';
 import '../controllers/zoom_controller.dart';
 import '../controllers/auto_scroll_controller.dart';
 
@@ -28,11 +30,13 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
   late ZoomController _zoomController;
   AutoScrollController? _scrollController;
   ScoreSyncService? _syncService;
+  PracticeStatsService? _statsService;
 
   // UI state
   bool _autoScrollEnabled = true;
   ScorePosition _currentPosition = ScorePosition.initial();
   final GlobalKey<State<ScoreViewer>> _scoreViewerKey = GlobalKey();
+  bool _showSessionSummary = false;
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
   void dispose() {
     _zoomController.dispose();
     _scrollController?.dispose();
+    _statsService?.dispose();
     super.dispose();
   }
 
@@ -108,9 +113,18 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
       if (isRecording) {
         await audioService.stopRecording();
         ref.read(isRecordingProvider.notifier).state = false;
+
+        // End stats session and show summary
+        _statsService?.endSession();
+        setState(() {
+          _showSessionSummary = true;
+        });
       } else {
         await audioService.startRecording();
         ref.read(isRecordingProvider.notifier).state = true;
+
+        // Start stats session
+        _statsService?.startSession();
       }
     } catch (e) {
       if (mounted) {
@@ -146,6 +160,9 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
 
         // Initialize synchronization service
         _syncService = ScoreSyncService(score: score);
+
+        // Initialize statistics service
+        _statsService = PracticeStatsService(score: score);
 
         // Initialize scroll controller
         _scrollController = AutoScrollController(
@@ -226,9 +243,24 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
 
   /// Handle detected note and update synchronization
   void _onNoteDetected(NoteData note) {
-    if (_syncService == null || !_isScoreLoaded) return;
+    if (_syncService == null || !_isScoreLoaded || _score == null) return;
 
     final newPosition = _syncService!.processDetectedNote(note);
+
+    // Record statistics
+    if (_statsService != null && _statsService!.isActive) {
+      final currentMeasure = _score!.getMeasure(newPosition.measureIndex);
+      final expectedNote = currentMeasure?.getNote(newPosition.noteIndex);
+
+      if (expectedNote != null) {
+        _statsService!.recordPlayedNote(
+          expectedNote: expectedNote,
+          playedNote: note,
+          position: newPosition,
+          syncConfidence: _syncService!.getSynchronizationConfidence(),
+        );
+      }
+    }
 
     setState(() {
       _currentPosition = newPosition;
@@ -254,6 +286,39 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
         }
       });
     });
+
+    // Show session summary dialog
+    if (_showSessionSummary && _statsService != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Dialog(
+            child: SessionSummaryCard(
+              stats: _statsService!.currentSession,
+              onRetry: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _showSessionSummary = false;
+                });
+                _syncService?.reset();
+                _scrollController?.reset();
+                _statsService?.reset();
+                setState(() {
+                  _currentPosition = ScorePosition.initial();
+                });
+              },
+              onClose: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _showSessionSummary = false;
+                });
+              },
+            ),
+          ),
+        );
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -359,38 +424,19 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen>
                           ),
                         ),
 
-                        // Synchronization confidence indicator
-                        if (_syncService != null && isRecording)
+                        // Real-time stats panel
+                        if (_statsService != null && isRecording)
                           Positioned(
                             top: 16,
                             left: 16,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.track_changes,
-                                    color: _getSyncColor(_syncService!.getSynchronizationConfidence()),
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Sync: ${(_syncService!.getSynchronizationConfidence() * 100).toInt()}%',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            child: AnimatedBuilder(
+                              animation: _statsService!,
+                              builder: (context, child) {
+                                return RealtimeStatsPanel(
+                                  stats: _statsService!.currentSession,
+                                  compact: true,
+                                );
+                              },
                             ),
                           ),
 
